@@ -8,8 +8,8 @@
 
 namespace Kicken\JSONRPC\Exception;
 
-class InvalidRequestException extends \RuntimeException {
+class InvalidJsonException extends \RuntimeException {
     public function __construct($details){
-        parent::__construct('Request format is invalid.', -32600);
+        parent::__construct('JSON format is invalid.', -32600);
     }
 }

@@ -45,4 +45,6 @@ class Server {
     protected function handleConnection(ConnectionInterface $connection){
         new Connection($connection, $this->methods);
     }
+
+
 }

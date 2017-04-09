@@ -9,55 +9,61 @@
 namespace Kicken\JSONRPC;
 
 
-use Kicken\JSONRPC\Exception\InvalidRequestException;
+use Kicken\JSONRPC\Exception\InvalidJsonException;
 
-class Request {
-    /** @var bool */
-    private $isNotification;
+class Request implements \JsonSerializable {
     /** @var mixed */
     private $id;
     /** @var string */
     private $method;
-    /** @var array|\stdClass */
+    /** @var mixed */
     private $params;
 
-    public function __construct(\stdClass $decodedJson){
-        $this->validate($decodedJson);
-        $this->isNotification = !property_exists($decodedJson, 'id');
-        $this->id = $this->isNotification?null:$decodedJson->id;
-        $this->method = $decodedJson->method;
-        $this->params = property_exists($decodedJson, 'params')?$decodedJson->params:[];
+    public function __construct($method, $params = null, $id = null){
+        $this->id = $id;
+        $this->method = $method;
+        $this->params = $params;
     }
 
-    private function validate(\stdClass $decodedJson){
-        if (!property_exists($decodedJson, 'jsonrpc')){
-            throw new InvalidRequestException('Missing required property "jsonrpc"');
+    public static function createFromJsonObject($data){
+        if (!property_exists($data, 'jsonrpc')){
+            throw new InvalidJsonException('Missing required property "jsonrpc"');
         }
 
-        if (!property_exists($decodedJson, 'method')){
-            throw new InvalidRequestException('Missing required property "method"');
+        if (!property_exists($data, 'method')){
+            throw new InvalidJsonException('Missing required property "method"');
         }
 
-        if ($decodedJson->jsonrpc !== '2.0'){
-            throw new InvalidRequestException('Property "jsonrpc" must be set to "2.0"');
+        if ($data->jsonrpc !== '2.0'){
+            throw new InvalidJsonException('Property "jsonrpc" must be set to "2.0"');
         }
 
-        if (!is_string($decodedJson->method)){
-            throw new InvalidRequestException('Property "method" must be a string containing a method name.');
+        if (!is_string($data->method)){
+            throw new InvalidJsonException('Property "method" must be a string containing a method name.');
         }
 
-        if (property_exists($decodedJson, 'params')){
-            if (!is_array($decodedJson->params) && !is_object($decodedJson->params)){
-                throw new InvalidRequestException('Property "params" must be an array or object');
+        $params = [];
+        if (property_exists($data, 'params')){
+            if (!is_array($data->params) && !is_object($data->params)){
+                throw new InvalidJsonException('Property "params" must be an array or object');
+            } else {
+                $params = $data->params;
             }
         }
+
+        $id = null;
+        if (property_exists($data, 'id')){
+            $id = $data->id;
+        }
+
+        return new self($data->method, $params, $id);
     }
 
     /**
      * @return bool
      */
     public function isNotification(){
-        return $this->isNotification;
+        return $this->id == null;
     }
 
     /**
