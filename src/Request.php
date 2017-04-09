@@ -29,6 +29,10 @@ class Request implements \JsonSerializable {
     }
 
     public static function createFromJsonObject($data){
+        if (!is_object($data)){
+            throw new InvalidJsonException('Json structure is not an object.');
+        }
+
         if (!property_exists($data, 'jsonrpc')){
             throw new InvalidJsonException('Missing required property "jsonrpc"');
         }
