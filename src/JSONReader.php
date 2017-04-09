@@ -10,33 +10,23 @@ namespace Kicken\JSONRPC;
 
 
 use Evenement\EventEmitterTrait;
-use Kicken\JSONRPC\Exception\InvalidJsonException;
-use React\EventLoop\LoopInterface;
-use React\Stream\DuplexStreamInterface;
+use Kicken\JSONRPC\Exception\MalformedJsonException;
+use React\Stream\ReadableStreamInterface;
 
-class JSONRPCStream {
+class JSONReader {
     use EventEmitterTrait;
 
-    protected $stream;
-    protected $loop;
-    protected $buffer;
+    /** @var ReadableStreamInterface */
+    protected $stream = null;
+    /** @var string */
+    protected $buffer = '';
 
-    public function __construct(DuplexStreamInterface $stream, LoopInterface $loop){
+    public function __construct(ReadableStreamInterface $stream){
         $this->stream = $stream;
-        $this->loop = $loop;
-
-        $this->stream->on('data', function ($data){
+        $this->stream->on('data', function($data){
             $this->buffer .= $data;
             $this->parseBuffer();
         });
-    }
-
-    public function sendRequest(Request $request){
-        $this->stream->write(json_encode($request));
-    }
-
-    public function sendResponse(Response $response){
-        $this->stream->write(json_encode($response));
     }
 
     protected function parseBuffer(){
@@ -47,11 +37,12 @@ class JSONRPCStream {
             $error = json_last_error();
             if ($error === JSON_ERROR_NONE){
                 $this->buffer = substr($this->buffer, strlen($documentString));
-                $this->process($document);
+                $this->emit('data', [$document]);
             } else {
                 $keepGoing = false;
                 if ($error !== JSON_ERROR_SYNTAX || !$this->stream->isReadable()){
                     $this->buffer = '';
+                    $this->emit('error', [new MalformedJsonException(json_last_error_msg())]);
                 }
             }
         }
@@ -91,53 +82,5 @@ class JSONRPCStream {
         }
 
         return $document;
-    }
-
-    protected function process($document){
-        $batchMode = is_array($document);
-        if (!$batchMode){
-            $document = [$document];
-        }
-
-        $responseList = [];
-        foreach ($document as $item){
-            /** @var Request|Response $object */
-            $object = null;
-            try {
-                $object = $this->convertToObject($item);
-                if ($object instanceof Request){
-
-                } else if ($object instanceof Response){
-
-                }
-            } catch (\Exception $ex){
-                $id = $object?$object->getId():null;
-                $responseList[] = ErrorResponse::createFromException($id, $ex);
-            }
-        }
-
-        if (!$batchMode && count($responseList) > 0){
-            $responseList = $responseList[0];
-        }
-
-        if ($responseList){
-            $this->sendResponse($responseList);
-        }
-    }
-
-    private function convertToObject($data){
-        if (property_exists($data, 'method')){
-            return Request::createFromJsonObject($data);
-        }
-
-        if (property_exists($data, 'result')){
-            return Response::createFromJsonObject($data);
-        }
-
-        if (property_exists($data, 'error')){
-            return ErrorResponse::createFromJsonObject($data);
-        }
-
-        throw new InvalidJsonException('Unknown json document type.');
     }
 }

@@ -59,6 +59,20 @@ class Request implements \JsonSerializable {
         return new self($data->method, $params, $id);
     }
 
+    function jsonSerialize(){
+        $data = [
+            'jsonrpc' => '2.0'
+            , 'method' => $this->method
+            , 'params' => $this->params
+        ];
+
+        if (!$this->isNotification()){
+            $data['id'] = $this->id;
+        }
+
+        return $data;
+    }
+
     /**
      * @return bool
      */
