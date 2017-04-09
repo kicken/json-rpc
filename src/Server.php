@@ -60,6 +60,9 @@ class Server {
                 $connection->write(json_encode($response));
             }
         });
+        $reader->on('error', function() use ($connection){
+            $connection->close();
+        });
     }
 
     private function processBatch($document){

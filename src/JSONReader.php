@@ -10,6 +10,7 @@ namespace Kicken\JSONRPC;
 
 
 use Evenement\EventEmitterTrait;
+use Kicken\JSONRPC\Exception\InvalidJsonException;
 use Kicken\JSONRPC\Exception\MalformedJsonException;
 use React\Stream\ReadableStreamInterface;
 
@@ -32,19 +33,35 @@ class JSONReader {
     protected function parseBuffer(){
         $keepGoing = true;
         while ($keepGoing){
-            $documentString = $this->extractJsonDocument();
-            $document = json_decode($documentString);
-            $error = json_last_error();
-            if ($error === JSON_ERROR_NONE){
-                $this->buffer = substr($this->buffer, strlen($documentString));
-                $this->emit('data', [$document]);
-            } else {
-                $keepGoing = false;
-                if ($error !== JSON_ERROR_SYNTAX || !$this->stream->isReadable()){
-                    $this->buffer = '';
-                    $this->emit('error', [new MalformedJsonException(json_last_error_msg())]);
+            try {
+                $document = $this->extractJsonDocument();
+                if (trim($document) === ''){
+                    $keepGoing = false;
+                } else {
+                    $this->processJsonDocument($document);
                 }
+            } catch (MalformedJsonException $ex){
+                $keepGoing = false;
+                if ($ex->getJsonErrorCode() !== JSON_ERROR_SYNTAX || !$this->stream->isReadable()){
+                    $this->buffer = '';
+                    $this->emit('error', [$ex]);
+                }
+            } catch (InvalidJsonException $ex){
+                $keepGoing = false;
+                $this->buffer = '';
+                $this->emit('error', [$ex]);
             }
+        }
+    }
+
+    private function processJsonDocument($document){
+        $data = json_decode($document);
+        $error = json_last_error();
+        if ($error === JSON_ERROR_NONE){
+            $this->buffer = substr($this->buffer, strlen($document));
+            $this->emit('data', [$data]);
+        } else {
+            throw new MalformedJsonException();
         }
     }
 
@@ -79,6 +96,12 @@ class JSONReader {
                     $keepGoing = false;
                 }
             }
+        }
+
+
+        $firstCharacter = substr(trim($document), 0, 1);
+        if ($firstCharacter !== false && $firstCharacter != '[' && $firstCharacter != '{'){
+            throw new InvalidJsonException("Stream cannot contain data outside an array or object container");
         }
 
         return $document;
