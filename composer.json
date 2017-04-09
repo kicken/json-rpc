@@ -1,0 +1,21 @@
+{
+  "name": "kicken/json-rpc",
+  "description": "JSON RPC 2.0 Server and Client",
+  "minimum-stability": "dev",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Keith Maika"
+    }
+  ],
+  "autoload": {
+    "psr-4": {
+      "Kicken\\JSONRPC\\": "src/"
+    }
+  },
+  "require": {
+    "php": ">=5.4.0",
+    "react/socket": "^0.6.0",
+    "react/event-loop": "^0.4.2"
+  }
+}
