@@ -12,6 +12,8 @@ namespace Kicken\JSONRPC;
 use Kicken\JSONRPC\Exception\InvalidJsonException;
 
 class Request implements \JsonSerializable {
+    /** @var bool */
+    private $isNotification;
     /** @var mixed */
     private $id;
     /** @var string */
@@ -19,7 +21,8 @@ class Request implements \JsonSerializable {
     /** @var mixed */
     private $params;
 
-    public function __construct($method, $params = null, $id = null){
+    public function __construct($method, $params = null, $id = null, $isNotification = false){
+        $this->isNotification = $isNotification;
         $this->id = $id;
         $this->method = $method;
         $this->params = $params;
@@ -51,12 +54,14 @@ class Request implements \JsonSerializable {
             }
         }
 
+        $isNotification = true;
         $id = null;
         if (property_exists($data, 'id')){
+            $isNotification = false;
             $id = $data->id;
         }
 
-        return new self($data->method, $params, $id);
+        return new self($data->method, $params, $id, $isNotification);
     }
 
     function jsonSerialize(){
@@ -66,7 +71,7 @@ class Request implements \JsonSerializable {
             , 'params' => $this->params
         ];
 
-        if (!$this->isNotification()){
+        if (!$this->isNotification){
             $data['id'] = $this->id;
         }
 
@@ -77,7 +82,7 @@ class Request implements \JsonSerializable {
      * @return bool
      */
     public function isNotification(){
-        return $this->id == null;
+        return $this->isNotification;
     }
 
     /**
