@@ -48,4 +48,12 @@ class Response implements \JsonSerializable {
             , 'id' => $this->id
         ];
     }
+
+    public function getId(){
+        return $this->id;
+    }
+
+    public function getResult(){
+        return $this->result;
+    }
 }

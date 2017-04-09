@@ -9,6 +9,7 @@
 namespace Kicken\JSONRPC;
 
 
+use Kicken\JSONRPC\Exception\MalformedJsonException;
 use Kicken\JSONRPC\Exception\MethodAlreadyRegisteredException;
 use Kicken\JSONRPC\Exception\MethodNotFoundException;
 use React\EventLoop\LoopInterface;
@@ -57,7 +58,7 @@ class Server {
             }
 
             if ($response){
-                $connection->write(json_encode($response));
+                $this->processResponse($connection, $response);
             }
         });
         $reader->on('error', function() use ($connection){
@@ -106,5 +107,34 @@ class Server {
         }
 
         return call_user_func($callback, $request);
+    }
+
+    /**
+     * @param ConnectionInterface $connection
+     * @param Response|Response[] $response
+     */
+    private function processResponse(ConnectionInterface $connection, $response){
+        if (is_array($response)){
+            $jsonList = [];
+            foreach ($response as $item){
+                $jsonList[] = $this->encodeResponse($item);
+            }
+
+            $json = '[' . implode(',', $jsonList) . ']';
+        } else {
+            $json = $this->encodeResponse($response);
+        }
+
+        $connection->write($json);
+    }
+
+    private function encodeResponse(Response $item){
+        $json = json_encode($item);
+        if (json_last_error() !== JSON_ERROR_NONE){
+            $error = ErrorResponse::createFromException($item->getId(), new MalformedJsonException());
+            $json = json_encode($error);
+        }
+
+        return $json;
     }
 }
