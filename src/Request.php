@@ -55,7 +55,7 @@ class Request implements \JsonSerializable {
             throw new InvalidJsonException('Property "method" must be a string containing a method name.');
         }
 
-        $params = [];
+        $params = null;
         if (property_exists($data, 'params')){
             if (!is_array($data->params) && !is_object($data->params)){
                 throw new InvalidJsonException('Property "params" must be an array or object');
