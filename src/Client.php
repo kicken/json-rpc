@@ -110,7 +110,7 @@ class Client {
             $deferred = $this->deferredMap[$id];
             unset($this->deferredMap[$id]);
 
-            $deferred->resolve($response);
+            $deferred->resolve($response->getResult());
         }
     }
 }
