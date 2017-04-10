@@ -26,6 +26,12 @@ class Request implements \JsonSerializable {
         $this->id = $id;
         $this->method = $method;
         $this->params = $params;
+
+        if ($params !== null){
+            if (!is_array($params) || !is_object($params)){
+                throw new \InvalidArgumentException('Params must be an array or object');
+            }
+        }
     }
 
     public static function createFromJsonObject($data){
