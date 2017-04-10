@@ -28,7 +28,7 @@ class Request implements \JsonSerializable {
         $this->params = $params;
 
         if ($params !== null){
-            if (!is_array($params) || !is_object($params)){
+            if (!is_array($params) && !is_object($params)){
                 throw new \InvalidArgumentException('Params must be an array or object');
             }
         }
