@@ -72,8 +72,11 @@ class Request implements \JsonSerializable {
         $data = [
             'jsonrpc' => '2.0'
             , 'method' => $this->method
-            , 'params' => $this->params
         ];
+
+        if ($this->params !== null){
+            $data['params'] = $this->params;
+        }
 
         if (!$this->isNotification){
             $data['id'] = $this->id;
