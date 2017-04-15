@@ -75,7 +75,7 @@ class ErrorResponse extends Response {
             $id = $data->id;
         }
 
-        return new self($id, $data->code, $data->message, $details);
+        return new self($id, $data->error->code, $data->error->message, $details);
     }
 
     public static function createFromException($id, \Exception $exception){
