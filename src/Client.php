@@ -10,6 +10,7 @@ namespace Kicken\JSONRPC;
 
 
 use Evenement\EventEmitterTrait;
+use Kicken\JSONRPC\Exception\InvalidJsonException;
 use Kicken\JSONRPC\Exception\MalformedJsonException;
 use Kicken\JSONRPC\Exception\NotConnectedException;
 use React\EventLoop\LoopInterface;
@@ -56,7 +57,12 @@ class Client {
             $this->stream = $stream;
             $jsonStream = new JSONReader($stream);
             $jsonStream->on('data', function($data){
-                $response = Response::createFromJsonObject($data);
+                try {
+                    $response = Response::createFromJsonObject($data);
+                } catch (InvalidJsonException $ex){
+                    $response = ErrorResponse::createFromJsonObject($data);
+                }
+
                 $this->processResponse($response);
             });
         });
@@ -110,7 +116,11 @@ class Client {
             $deferred = $this->deferredMap[$id];
             unset($this->deferredMap[$id]);
 
-            $deferred->resolve($response->getResult());
+            if ($response instanceof ErrorResponse){
+                $deferred->reject($response);
+            } else {
+                $deferred->resolve($response->getResult());
+            }
         }
     }
 }
