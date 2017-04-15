@@ -25,6 +25,18 @@ class ErrorResponse extends Response {
         $this->data = $data;
     }
 
+    public function getErrorCode(){
+        return $this->code;
+    }
+
+    public function getErrorMessage(){
+        return $this->message;
+    }
+
+    public function getErrorData(){
+        return $this->data;
+    }
+
     public function jsonSerialize(){
         $result = parent::jsonSerialize();
         unset($result['result']);
