@@ -24,7 +24,7 @@ class JSONReader {
 
     public function __construct(ReadableStreamInterface $stream){
         $this->stream = $stream;
-        $this->stream->on('data', function($data){
+        $this->stream->on('data', function ($data){
             $this->buffer .= $data;
             $this->parseBuffer();
         });
@@ -32,7 +32,7 @@ class JSONReader {
 
     protected function parseBuffer(){
         $keepGoing = true;
-        while ($keepGoing){
+        while ($this->buffer !== '' && $keepGoing){
             try {
                 $document = $this->extractJsonDocument();
                 if (trim($document) === ''){
