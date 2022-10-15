@@ -10,6 +10,7 @@ namespace Kicken\JSONRPC;
 
 
 use Kicken\JSONRPC\Exception\InvalidJsonException;
+use Psr\Http\Message\RequestInterface;
 
 class Request implements \JsonSerializable {
     /** @var bool */
@@ -72,6 +73,19 @@ class Request implements \JsonSerializable {
         }
 
         return new self($data->method, $params, $id, $isNotification);
+    }
+
+    public static function createFromHttpRequest(RequestInterface $request){
+        if ($request->getHeaderLine('Content-type') !== 'application/json'){
+            throw new \RuntimeException('Invalid type');
+        }
+        $body = $request->getBody()->getContents();
+        $decoded = json_decode($body);
+        if (json_last_error() !== JSON_ERROR_NONE){
+            throw new \RuntimeException('Invalid json data');
+        }
+
+        return self::createFromJsonObject($decoded);
     }
 
     function jsonSerialize(){

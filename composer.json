@@ -15,7 +15,8 @@
   },
   "require": {
     "php": ">=5.4.0",
-    "ext-json": "*"
+    "ext-json": "*",
+    "psr/http-message": "1.0.1"
   },
   "suggest": {
     "react/event-loop": "^0.4.2",
