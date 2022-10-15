@@ -15,6 +15,7 @@
   },
   "require": {
     "php": ">=5.4.0",
+    "ext-json": "*",
     "react/socket": "^0.6.0",
     "react/event-loop": "^0.4.2",
     "react/socket-client": "dev-master"

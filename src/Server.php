@@ -10,8 +10,6 @@ namespace Kicken\JSONRPC;
 
 
 use Kicken\JSONRPC\Exception\MalformedJsonException;
-use Kicken\JSONRPC\Exception\MethodAlreadyRegisteredException;
-use Kicken\JSONRPC\Exception\MethodNotFoundException;
 use React\EventLoop\LoopInterface;
 use React\Socket\ConnectionInterface;
 use React\Socket\ServerInterface;
@@ -21,24 +19,13 @@ class Server {
     protected $loop = null;
     /** @var ServerInterface */
     protected $stream = null;
-    /** @var array */
-    protected $methods = [];
+    /** @var MethodRegistry */
+    protected $methodRegistry;
 
-    public function __construct($url, LoopInterface $loop){
+    public function __construct($url, MethodRegistry $registry, LoopInterface $loop){
         $this->loop = $loop;
+        $this->methodRegistry = $registry;
         $this->createServerStream($url);
-    }
-
-    public function registerMethod($method, callable $callback){
-        if (array_key_exists($method, $this->methods)){
-            throw new MethodAlreadyRegisteredException($method);
-        }
-
-        $this->methods[$method] = $callback;
-    }
-
-    public function unregisterMethod($method){
-        unset($this->methods[$method]);
     }
 
     private function createServerStream($url){
@@ -86,7 +73,7 @@ class Server {
         }
 
         try {
-            $result = $this->execute($request);
+            $result = $this->methodRegistry->execute($request);
             $response = new Response($request->getId(), $result);
         } catch (\Exception $ex){
             $response = ErrorResponse::createFromException($request->getId(), $ex);
@@ -97,16 +84,6 @@ class Server {
         }
 
         return $response;
-    }
-
-    private function execute(Request $request){
-        $method = $request->getMethod();
-        $callback = isset($this->methods[$method])?$this->methods[$method]:null;
-        if (!is_callable($callback)){
-            throw new MethodNotFoundException($method);
-        }
-
-        return call_user_func($callback, $request);
     }
 
     /**
