@@ -9,6 +9,8 @@
 namespace Kicken\JSONRPC\Exception;
 
 
-class NotConnectedException extends \RuntimeException {
+use RuntimeException;
+
+class NotConnectedException extends RuntimeException {
 
 }

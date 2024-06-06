@@ -9,101 +9,104 @@
 namespace Kicken\JSONRPC;
 
 
-use Evenement\EventEmitterTrait;
-use Kicken\JSONRPC\Exception\InvalidJsonException;
+use Generator;
 use Kicken\JSONRPC\Exception\MalformedJsonException;
-use React\Stream\ReadableStreamInterface;
+use LogicException;
+use stdClass;
 
 class JSONReader {
-    use EventEmitterTrait;
+    private bool $bufferCanGrow = true;
+    private string $buffer = '';
+    private int $bufferOffset = 0;
 
-    /** @var ReadableStreamInterface */
-    protected $stream = null;
-    /** @var string */
-    protected $buffer = '';
-
-    public function __construct(ReadableStreamInterface $stream){
-        $this->stream = $stream;
-        $this->stream->on('data', function ($data){
-            $this->buffer .= $data;
-            $this->parseBuffer();
-        });
+    public function feed(string $data, bool $expectMore = true) : void{
+        $this->buffer .= $data;
+        $this->bufferCanGrow = $expectMore;
     }
 
-    protected function parseBuffer(){
-        $keepGoing = true;
-        while ($this->buffer !== '' && $keepGoing){
-            try {
-                $document = $this->extractJsonDocument();
-                if (trim($document) === ''){
-                    $keepGoing = false;
-                } else {
-                    $this->processJsonDocument($document);
-                }
-            } catch (MalformedJsonException $ex){
-                $keepGoing = false;
-                if ($ex->getJsonErrorCode() !== JSON_ERROR_SYNTAX || !$this->stream->isReadable()){
-                    $this->buffer = '';
-                    $this->emit('error', [$ex]);
-                }
-            } catch (InvalidJsonException $ex){
-                $keepGoing = false;
-                $this->buffer = '';
-                $this->emit('error', [$ex]);
+    public function reset() : void{
+        $this->buffer = '';
+    }
+
+    public function readObjects() : Generator{
+        while ($this->findStartOfDocument()){
+            $startOffset = $this->bufferOffset;
+            if ($this->findEndOfDocument()){
+                $endOffset = $this->bufferOffset + 1;
+                $document = substr($this->buffer, $startOffset, $endOffset - $startOffset);
+                $this->buffer = substr($this->buffer, $endOffset + 1);
+
+                yield $this->processJsonDocument($document);
+            } else if (!$this->bufferCanGrow){
+                throw new MalformedJsonException();
+            } else {
+                return;
             }
         }
     }
 
-    private function processJsonDocument($document){
+    private function processJsonDocument($document) : stdClass|array{
         $data = json_decode($document);
         $error = json_last_error();
         if ($error === JSON_ERROR_NONE){
-            $this->buffer = substr($this->buffer, strlen($document));
-            $this->emit('data', [$data]);
+            return $data;
         } else {
             throw new MalformedJsonException();
         }
     }
 
-    protected function extractJsonDocument(){
-        $document = '';
-        $keepGoing = true;
-        $inQuote = false;
-        $braceCounter = 0;
-        $bracketCounter = 0;
-        $i = 0;
-        while ($keepGoing && isset($this->buffer[$i])){
-            $previousCh = $i > 0?$this->buffer[$i - 1]:null;
-            $ch = $this->buffer[$i++];
-            $document .= $ch;
-
-            if (!ctype_space($ch)){
-                if ($ch == '"' && (!$inQuote || $previousCh !== '\\')){
-                    $inQuote = !$inQuote;
-                } else if (!$inQuote){
-                    if ($ch == '{'){
-                        $braceCounter++;
-                    } else if ($ch == '}'){
-                        $braceCounter--;
-                    } else if ($ch == '['){
-                        $bracketCounter++;
-                    } else if ($ch == ']'){
-                        $bracketCounter--;
-                    }
-                }
-
-                if ($braceCounter == 0 && $bracketCounter == 0 && !$inQuote){
-                    $keepGoing = false;
-                }
+    private function findStartOfDocument() : bool{
+        $this->bufferOffset = 0;
+        for (; isset($this->buffer[$this->bufferOffset]); $this->bufferOffset++){
+            $ch = $this->buffer[$this->bufferOffset];
+            if (in_array($ch, ['[', '{'])){
+                return true;
+            } else if (!ctype_space($ch)){
+                throw new MalformedJsonException();
             }
         }
 
+        return false;
+    }
 
-        $firstCharacter = substr(trim($document), 0, 1);
-        if ($firstCharacter !== false && $firstCharacter != '[' && $firstCharacter != '{'){
-            throw new InvalidJsonException("Stream cannot contain data outside an array or object container");
+    private function findEndOfDocument() : bool{
+        $openingChar = $this->buffer[$this->bufferOffset];
+        $closingChar = match ($openingChar) {
+            '{' => '}',
+            '[' => ']',
+            default => throw new LogicException('Invalid opening document character ' . $openingChar)
+        };
+
+        $inQuote = false;
+        $previousCh = null;
+        $braceCounter = $bracketCounter = 0;
+
+        for (; isset($this->buffer[$this->bufferOffset]); $this->bufferOffset++){
+            $ch = $this->buffer[$this->bufferOffset];
+            if ($ch === '\\' && $previousCh !== '\\'){
+                $previousCh = null;
+                continue;
+            } else if ($ch == '"' && $previousCh !== '\\'){
+                $inQuote = !$inQuote;
+            } else if (!$inQuote){
+                if ($ch === '{'){
+                    $braceCounter++;
+                } else if ($ch === '}'){
+                    $braceCounter--;
+                } else if ($ch === '['){
+                    $bracketCounter++;
+                } else if ($ch === ']'){
+                    $bracketCounter--;
+                }
+
+                if ($ch === $closingChar && $braceCounter === 0 && $bracketCounter === 0){
+                    return true;
+                }
+            }
+
+            $previousCh = $ch;
         }
 
-        return $document;
+        return false;
     }
 }

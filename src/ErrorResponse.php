@@ -9,51 +9,22 @@
 namespace Kicken\JSONRPC;
 
 
+use Exception;
 use Kicken\JSONRPC\Exception\InvalidJsonException;
 use Kicken\JSONRPC\Exception\JSONRPCException;
 
-class ErrorResponse extends Response {
-    private $id;
-    private $code;
-    private $message;
-    private $data;
+class ErrorResponse implements Response {
+    private const GENERIC_ERROR_CODE = -32603;
 
-    public function __construct($id, $code, $message, $data){
-        parent::__construct($id, false);
-        $this->code = $code;
-        $this->message = $message;
-        $this->data = $data;
+    public function __construct(
+        public readonly int $code,
+        public readonly string $message,
+        public mixed $data,
+        public readonly ?string $id,
+    ){
     }
 
-    public function getErrorCode(){
-        return $this->code;
-    }
-
-    public function getErrorMessage(){
-        return $this->message;
-    }
-
-    public function getErrorData(){
-        return $this->data;
-    }
-
-    public function jsonSerialize(){
-        $result = parent::jsonSerialize();
-        unset($result['result']);
-
-        $result['error'] = [
-            'code' => $this->code
-            , 'message' => $this->message
-        ];
-
-        if ($this->data){
-            $result['error']['data'] = $this->data;
-        }
-
-        return $result;
-    }
-
-    public static function createFromJsonObject($data){
+    public static function createFromJsonObject($data) : ErrorResponse{
         if (!property_exists($data, 'jsonrpc')){
             throw new InvalidJsonException('Missing required property "jsonrpc"');
         }
@@ -87,15 +58,41 @@ class ErrorResponse extends Response {
             $id = $data->id;
         }
 
-        return new self($id, $data->error->code, $data->error->message, $details);
+        return new self($data->error->code, $data->error->message, $details, $id);
     }
 
-    public static function createFromException($id, \Exception $exception){
+    public static function createFromException(Exception $exception, ?string $id = null) : ErrorResponse{
         $data = null;
         if ($exception instanceof JSONRPCException){
             $data = $exception->getData();
         }
 
-        return new self($id, $exception->getCode(), $exception->getMessage(), $data);
+        $code = $exception->getCode() ?? -self::GENERIC_ERROR_CODE;
+        $message = $exception->getMessage();
+        if (!$message && $code === self::GENERIC_ERROR_CODE){
+            $message = 'Internal Error';
+        }
+
+        return new self($code, $message, $data, $id);
+    }
+
+    public function jsonSerialize() : array{
+        $result = [
+            'jsonrpc' => '2.0',
+            'id' => $this->id,
+            'error' => [
+                'code' => $this->code,
+                'message' => $this->message
+            ]
+        ];
+        if ($this->data){
+            $result['error']['data'] = $this->data;
+        }
+
+        return $result;
+    }
+
+    public function getId() : ?string{
+        return $this->id;
     }
 }

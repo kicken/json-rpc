@@ -8,17 +8,12 @@
 
 namespace Kicken\JSONRPC\Exception;
 
-class JSONRPCException extends \RuntimeException {
-    protected $data;
+use RuntimeException;
 
-    /**
-     * JSONRPCException constructor.
-     *
-     * @param string $message Brief message describing the error
-     * @param int $code Error code value
-     * @param mixed $data Extra data or details related to this error
-     */
-    public function __construct($message = "", $code = 0, $data = null){
+class JSONRPCException extends RuntimeException {
+    protected mixed $data;
+
+    public function __construct(string $message = "", int $code = 0, $data = null){
         parent::__construct($message, $code);
         $this->data = $data;
     }

@@ -9,37 +9,27 @@
 namespace Kicken\JSONRPC;
 
 
+use InvalidArgumentException;
+use JsonSerializable;
 use Kicken\JSONRPC\Exception\InvalidJsonException;
 use Psr\Http\Message\RequestInterface;
+use RuntimeException;
 
-class Request implements \JsonSerializable {
-    /** @var bool */
-    private $isNotification;
-    /** @var mixed */
-    private $id;
-    /** @var string */
-    private $method;
-    /** @var mixed */
-    private $params;
-
-    public function __construct($method, $params = null, $id = null, $isNotification = false){
-        $this->isNotification = $isNotification;
-        $this->id = $id;
-        $this->method = $method;
-        $this->params = $params;
-
+class Request implements JsonSerializable {
+    public function __construct(
+        private readonly string $method,
+        private readonly array|object|null $params = null,
+        private readonly ?string $id = null,
+        private readonly bool $isNotification = false
+    ){
         if ($params !== null){
             if (!is_array($params) && !is_object($params)){
-                throw new \InvalidArgumentException('Params must be an array or object');
+                throw new InvalidArgumentException('Params must be an array or object');
             }
         }
     }
 
-    public static function createFromJsonObject($data){
-        if (!is_object($data)){
-            throw new InvalidJsonException('Json structure is not an object.');
-        }
-
+    public static function createFromJsonObject(object $data) : Request{
         if (!property_exists($data, 'jsonrpc')){
             throw new InvalidJsonException('Missing required property "jsonrpc"');
         }
@@ -75,20 +65,20 @@ class Request implements \JsonSerializable {
         return new self($data->method, $params, $id, $isNotification);
     }
 
-    public static function createFromHttpRequest(RequestInterface $request){
+    public static function createFromHttpRequest(RequestInterface $request) : Request{
         if ($request->getHeaderLine('Content-type') !== 'application/json'){
-            throw new \RuntimeException('Invalid type');
+            throw new RuntimeException('Invalid type');
         }
         $body = $request->getBody()->getContents();
         $decoded = json_decode($body);
         if (json_last_error() !== JSON_ERROR_NONE){
-            throw new \RuntimeException('Invalid json data');
+            throw new RuntimeException('Invalid json data');
         }
 
         return self::createFromJsonObject($decoded);
     }
 
-    function jsonSerialize(){
+    public function jsonSerialize() : array{
         $data = [
             'jsonrpc' => '2.0'
             , 'method' => $this->method
@@ -105,31 +95,19 @@ class Request implements \JsonSerializable {
         return $data;
     }
 
-    /**
-     * @return bool
-     */
-    public function isNotification(){
+    public function isNotification() : bool{
         return $this->isNotification;
     }
 
-    /**
-     * @return mixed
-     */
-    public function getId(){
+    public function getId() : ?string{
         return $this->id;
     }
 
-    /**
-     * @return string
-     */
-    public function getMethod(){
+    public function getMethod() : string{
         return $this->method;
     }
 
-    /**
-     * @return array|\stdClass
-     */
-    public function getParams(){
+    public function getParams() : object|array|null{
         return $this->params;
     }
 }

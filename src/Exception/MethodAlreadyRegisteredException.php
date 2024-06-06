@@ -8,7 +8,9 @@
 
 namespace Kicken\JSONRPC\Exception;
 
-class MethodAlreadyRegisteredException extends \LogicException {
+use LogicException;
+
+class MethodAlreadyRegisteredException extends LogicException {
     public function __construct($method){
         parent::__construct(sprintf('Method "%s" has already been registered with this server.', $method));
     }

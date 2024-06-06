@@ -58,7 +58,7 @@ class Client {
             $jsonStream = new JSONReader($stream);
             $jsonStream->on('data', function($data){
                 try {
-                    $response = Response::createFromJsonObject($data);
+                    $response = SuccessfulResponse::createFromJsonObject($data);
                 } catch (InvalidJsonException $ex){
                     $response = ErrorResponse::createFromJsonObject($data);
                 }
@@ -110,7 +110,7 @@ class Client {
         return new Request($method, $params, $id, $notification);
     }
 
-    private function processResponse(Response $response){
+    private function processResponse(SuccessfulResponse $response){
         $id = $response->getId();
         if (isset($this->deferredMap[$id])){
             $deferred = $this->deferredMap[$id];
