@@ -83,6 +83,8 @@ class ClientConnection {
             if (!is_string($data) || $data === ''){
                 $this->logger->notice(sprintf('[%s] Read error, disconnecting.', $this->clientIp));
                 $this->disconnect();
+
+                return;
             }
 
             $this->logger->debug(sprintf('[%s] Buffered incoming data.', $this->clientIp), [
@@ -100,6 +102,8 @@ class ClientConnection {
         if (!is_int($written)){
             $this->logger->notice(sprintf('[%s] Write error, disconnecting.', $this->clientIp));
             $this->disconnect();
+
+            return;
         }
 
         if ($written === $length){
