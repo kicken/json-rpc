@@ -10,12 +10,8 @@ namespace Kicken\JSONRPC\Client;
 
 
 use Amp\Future;
-use Kicken\JSONRPC\Exception\JSONRPCException;
-use Kicken\JSONRPC\Exception\MalformedJsonException;
-use Kicken\JSONRPC\JSONReader;
 use Kicken\JSONRPC\Request;
 use Kicken\JSONRPC\Response;
-use Kicken\JSONRPC\SuccessfulResponse;
 use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerAwareTrait;
 use Psr\Log\LoggerInterface;
@@ -27,64 +23,54 @@ use function Amp\async;
 class Client implements LoggerAwareInterface {
     use LoggerAwareTrait;
 
-    /** @var resource */
-    private $stream = null;
     private int $idCounter = 0;
-    private readonly JSONReader $reader;
-    private array $responseMap;
 
     public function __construct(
-        private readonly string $url,
+        private readonly string $ip,
+        private readonly int $port = 6850,
         private readonly int $timeout = 10,
         ?LoggerInterface $logger = null
     ){
         $this->logger = $logger ?? new NullLogger();
-        $this->reader = new JSONReader();
-        $this->responseMap = [];
     }
 
-    private function bufferResponses() : void{
-        foreach ($this->reader->readObjects() as $batch){
-            if (!is_array($batch)){
-                $batch = [$batch];
-            }
-
-            foreach ($batch as $document){
-                try {
-                    $response = SuccessfulResponse::createFromJsonObject($document);
-                    $this->responseMap[$response->id] = $response;
-                } catch (JSONRPCException $ex){
-                    $this->logger->warning('Unable to process response document', [
-                        'document' => $document,
-                        'exception' => $ex
-                    ]);
-                }
-            }
-        }
-    }
 
     private function connect() : Future{
-        if ($this->stream){
-            return Future::complete($this->stream);
-        }
-
         return async(function(){
-            $this->stream = stream_socket_client($this->url, $errorCode, $errorString, $this->timeout, STREAM_CLIENT_ASYNC_CONNECT | STREAM_CLIENT_CONNECT);
-            if (!$this->stream){
+            $url = sprintf('tcp://%s:%d', $this->ip, $this->port);
+            $stream = stream_socket_client($url, $errorCode, $errorString, null, STREAM_CLIENT_ASYNC_CONNECT);
+            if (!$stream){
+                $this->logger->error('Failed to connect to server', [
+                    'url' => $url,
+                    'errorCode' => $errorCode,
+                    'errorMessage' => $errorString,
+                ]);
                 throw new RuntimeException('Could not connect to server');
             }
+
             $suspension = EventLoop::getSuspension();
-            EventLoop::onWritable($this->stream, function(string $callbackId) use ($suspension){
-                EventLoop::cancel($callbackId);
+            $writableCallbackId = EventLoop::onWritable($stream, function() use ($suspension){
                 $suspension->resume();
             });
+            $timeoutCallbackId = EventLoop::delay($this->timeout, function() use ($suspension, $url){
+                $this->logger->error('Timeout while attempting to connect to server', [
+                    'url' => $url
+                ]);
+                $suspension->throw(new RuntimeException('Unable to connect to server, timeout reached.'));
+            });
             $suspension->suspend();
+            EventLoop::cancel($writableCallbackId);
+            EventLoop::cancel($timeoutCallbackId);
 
-            if (!stream_socket_get_name($this->stream, true)){
-                throw new RuntimeException('Unable to connect to server.');
+            $remote = stream_socket_get_name($stream, true);
+            if (!$remote){
+                $this->logger->error('Unable to connect to socket.', [
+                    'url' => $url,
+                ]);
+                throw new RuntimeException('Could not connect to server');
             }
 
-            return $this->stream;
+            return new ClientConnection($stream, $this->logger);
         });
     }
 
@@ -100,21 +86,10 @@ class Client implements LoggerAwareInterface {
     }
 
     private function send(Request $request) : ?Response{
-        $json = json_encode($request);
-        if (json_last_error() !== JSON_ERROR_NONE){
-            throw new MalformedJsonException();
-        }
+        /** @var ClientConnection $client */
+        $client = $this->connect()->await();
 
-        $this->connect()->await();
-
-        $this->writeToSocket($json);
-
-        $response = null;
-        if (!$request->isNotification()){
-            $response = $this->readResponse($request);
-        }
-
-        return $response;
+        return $client->processRequest($request);
     }
 
     private function createRequest(string $method, array|object|null $params, bool $notification) : Request{
@@ -123,53 +98,4 @@ class Client implements LoggerAwareInterface {
         return new Request($method, $params, $id, $notification);
     }
 
-    private function readResponse(Request $request) : Response{
-        $suspension = EventLoop::getSuspension();
-        $id = $request->getId();
-        $callbackId = EventLoop::onReadable($this->stream, function() use ($suspension){
-            $data = fread($this->stream, 8192);
-            if (!is_string($data) || $data === ''){
-                throw new RuntimeException('Client disconnected');
-            }
-
-            $this->reader->feed($data);
-            $suspension->resume();
-        });
-
-        while (!isset($this->responseMap[$id])){
-            $suspension->suspend();
-            $this->bufferResponses();
-        }
-        EventLoop::cancel($callbackId);
-
-        return $this->responseMap[$id];
-    }
-
-    private function writeToSocket(string $buffer) : void{
-        $suspension = EventLoop::getSuspension();
-        $callbackId = EventLoop::onWritable($this->stream, function() use (&$buffer, $suspension){
-            $length = strlen($buffer);
-            $written = fwrite($this->stream, $buffer, $length);
-            if (!is_int($written)){
-                $this->logger->notice('Write error, disconnecting.');
-            }
-
-            if ($written === $length){
-                $this->logger->debug('Flushed write buffer.');
-                $buffer = '';
-            } else if ($written > 0){
-                $buffer = substr($buffer, $written);
-                $this->logger->debug('Partially flushed write buffer', [
-                    'bytesFlushed' => $written,
-                    'remainingBuffer' => $buffer
-                ]);
-            }
-            $suspension->resume();
-        });
-
-        while ($buffer !== ''){
-            $suspension->suspend();
-        }
-        EventLoop::cancel($callbackId);
-    }
 }

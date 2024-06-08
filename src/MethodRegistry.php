@@ -38,7 +38,7 @@ class MethodRegistry {
         unset($this->methodList[$methodName]);
     }
 
-    public function execute(Request $request) : array|null|object{
+    public function execute(Request $request) : mixed{
         $method = $request->getMethod();
         /** @var RPCMethod $handler */
         $handler = $this->methodList[$method] ?? null;

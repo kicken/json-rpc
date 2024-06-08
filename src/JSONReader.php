@@ -34,11 +34,11 @@ class JSONReader {
             if ($this->findEndOfDocument()){
                 $endOffset = $this->bufferOffset + 1;
                 $document = substr($this->buffer, $startOffset, $endOffset - $startOffset);
-                $this->buffer = substr($this->buffer, $endOffset + 1);
+                $this->buffer = substr($this->buffer, $endOffset);
 
                 yield $this->processJsonDocument($document);
             } else if (!$this->bufferCanGrow){
-                throw new MalformedJsonException();
+                throw new MalformedJsonException(json_last_error());
             } else {
                 return;
             }
@@ -51,7 +51,7 @@ class JSONReader {
         if ($error === JSON_ERROR_NONE){
             return $data;
         } else {
-            throw new MalformedJsonException();
+            throw new MalformedJsonException($error);
         }
     }
 
@@ -62,7 +62,7 @@ class JSONReader {
             if (in_array($ch, ['[', '{'])){
                 return true;
             } else if (!ctype_space($ch)){
-                throw new MalformedJsonException();
+                throw new MalformedJsonException(JSON_ERROR_SYNTAX);
             }
         }
 

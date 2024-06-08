@@ -46,7 +46,6 @@ class JSONReaderTest extends TestCase {
         $this->assertCount(2, $result);
     }
 
-
     public function testYieldsNothingOnEmptyBufferThatCanGrow(){
         $this->assertEmpty(iterator_to_array($this->service->readObjects()));
     }
@@ -123,6 +122,19 @@ class JSONReaderTest extends TestCase {
             {"jsonrpc": "2.0", "method": "get_data", "id": "9"} 
         ]');
         [$result] = iterator_to_array($this->service->readObjects());
+        $this->assertCount(6, $result);
+    }
+
+    public function testHandlesMultipleObjects(){
+        $this->service->feed(implode('', [
+            '{"jsonrpc": "2.0", "method": "sum", "params": [1,2,4], "id": "1"}',
+            '{"jsonrpc": "2.0", "method": "notify_hello", "params": [7]}',
+            '{"jsonrpc": "2.0", "method": "subtract", "params": [42,23], "id": "2"}',
+            '{"foo": "boo"}',
+            '{"jsonrpc": "2.0", "method": "foo.get", "params": {"name": "myself"}, "id": "5"}',
+            '{"jsonrpc": "2.0", "method": "get_data", "id": "9"}',
+        ]));
+        $result = iterator_to_array($this->service->readObjects());
         $this->assertCount(6, $result);
     }
 }

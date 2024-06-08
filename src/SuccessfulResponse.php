@@ -14,7 +14,7 @@ use Kicken\JSONRPC\Exception\InvalidJsonException;
 class SuccessfulResponse implements Response {
     public function __construct(
         public readonly ?string $id,
-        public readonly object|array|null $result = null
+        public readonly mixed $result = null
     ){
     }
 

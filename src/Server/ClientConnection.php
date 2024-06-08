@@ -14,6 +14,8 @@ use Revolt\EventLoop;
 use stdClass;
 
 class ClientConnection {
+    private const CHUNK_SIZE = 1024 * 1024 * 10;
+
     public readonly string $clientIp;
 
     private readonly string $readableCallbackId;
@@ -29,6 +31,17 @@ class ClientConnection {
         $this->writableCallbackId = EventLoop::onWritable($this->stream, $this->streamWritable(...));
         $this->reader = new JSONReader();
         EventLoop::disable($this->writableCallbackId);
+
+        stream_set_read_buffer($this->stream, 0);
+        stream_set_write_buffer($this->stream, 0);
+    }
+
+
+    public function disconnect() : void{
+        EventLoop::cancel($this->readableCallbackId);
+        EventLoop::cancel($this->writableCallbackId);
+        fclose($this->stream);
+        $this->stream = null;
     }
 
     /**
@@ -79,18 +92,24 @@ class ClientConnection {
                 return;
             }
 
-            $data = fread($this->stream, 8192);
-            if (!is_string($data) || $data === ''){
+            $totalRead = 0;
+            do {
+                $data = fread($this->stream, self::CHUNK_SIZE) ?: '';
+                if ($data !== ''){
+                    $totalRead += $length = strlen($data);
+                    $this->reader->feed($data);
+                    $this->logger->debug(sprintf('[%s] Buffered incoming data bytes', $this->clientIp), [
+                        'count' => $length
+                    ]);
+                }
+            } while ($data !== '');
+
+            if ($totalRead === 0){
                 $this->logger->notice(sprintf('[%s] Read error, disconnecting.', $this->clientIp));
                 $this->disconnect();
 
                 return;
             }
-
-            $this->logger->debug(sprintf('[%s] Buffered incoming data.', $this->clientIp), [
-                'data' => $data
-            ]);
-            $this->reader->feed($data);
         } finally {
             $this->suspension->resume();
         }
@@ -121,17 +140,10 @@ class ClientConnection {
         $this->suspension->resume();
     }
 
-    private function disconnect() : void{
-        EventLoop::cancel($this->readableCallbackId);
-        EventLoop::cancel($this->writableCallbackId);
-        fclose($this->stream);
-        $this->stream = null;
-    }
-
     private function encodeResponse(Response $item) : string{
         $json = json_encode($item);
         if (json_last_error() !== JSON_ERROR_NONE){
-            $error = ErrorResponse::createFromException(new MalformedJsonException(), $item->getId());
+            $error = ErrorResponse::createFromException(new MalformedJsonException(json_last_error()), $item->getId());
             $json = json_encode($error);
         }
 

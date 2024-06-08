@@ -16,12 +16,12 @@ namespace Kicken\JSONRPC\Exception;
 
 
 class MalformedJsonException extends JSONRPCException {
-    public function __construct(){
-        $code = json_last_error();
+    public function __construct(int $code){
+        $codeMessage = $this->codeToMessage($code);
 
-        parent::__construct('Malformed JSON received.', -32700, [
+        parent::__construct('Malformed JSON received. ' . $codeMessage, -32700, [
             'code' => $code
-            , 'message' => $this->codeToMessage($code)
+            , 'message' => $codeMessage
         ]);
     }
 
@@ -35,6 +35,10 @@ class MalformedJsonException extends JSONRPCException {
         $data = $this->getData();
 
         return $data['message'];
+    }
+
+    public function __toString() : string{
+        return parent::__toString();
     }
 
     private function codeToMessage($code) : string{

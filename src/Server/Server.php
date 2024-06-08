@@ -24,9 +24,13 @@ use RuntimeException;
 class Server implements LoggerAwareInterface {
     use LoggerAwareTrait;
 
-    /** @var resource */
-    protected $stream = null;
     protected readonly MethodRegistry $methodRegistry;
+    /** @var array<resource> */
+    private array $serverStreamList = [];
+    /** @var array<string> */
+    private array $serverCallbackIdList = [];
+    /** @var array<ClientConnection> */
+    private array $clientConnectionList = [];
 
     public function __construct(MethodRegistry $registry, LoggerInterface $logger = null){
         $this->logger = $logger ?? new NullLogger();
@@ -91,8 +95,21 @@ class Server implements LoggerAwareInterface {
         }
     }
 
+    public function shutdown() : void{
+        foreach ($this->serverCallbackIdList as $callbackId){
+            EventLoop::cancel($callbackId);
+        }
+        foreach ($this->serverStreamList as $stream){
+            fclose($stream);
+        }
+        foreach ($this->clientConnectionList as $client){
+            $client->disconnect();
+        }
+    }
+
     private function acceptClientConnections($serverStream, bool $enableCrypto) : void{
-        EventLoop::onReadable($serverStream, function() use ($serverStream, $enableCrypto){
+        $this->serverStreamList[] = $serverStream;
+        $this->serverCallbackIdList[] = EventLoop::onReadable($serverStream, function() use ($serverStream, $enableCrypto){
             $clientStream = stream_socket_accept($serverStream);
             if ($clientStream){
                 $clientIp = stream_socket_get_name($clientStream, true);
@@ -106,6 +123,7 @@ class Server implements LoggerAwareInterface {
                     return;
                 }
 
+                stream_set_blocking($clientStream, false);
                 $this->logger->info('Successfully established client connection.', [
                     'client' => $clientIp
                 ]);
@@ -116,6 +134,8 @@ class Server implements LoggerAwareInterface {
 
     private function handleClient($clientStream) : void{
         $client = new ClientConnection($clientStream, $this->logger);
+        $this->clientConnectionList[] = $client;
+
         foreach ($client->readMessages() as $message){
             if (is_array($message)){
                 $response = $this->processBatch($message);
