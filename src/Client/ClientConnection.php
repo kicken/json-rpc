@@ -34,6 +34,7 @@ class ClientConnection {
     }
 
     public function processRequest(Request $request) : ?Response{
+
         $requestJson = json_encode($request);
         $error = json_last_error();
         if ($error !== JSON_ERROR_NONE){

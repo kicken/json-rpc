@@ -33,6 +33,18 @@ class Client implements LoggerAwareInterface {
         $this->logger = $logger ?? new NullLogger();
     }
 
+    public function sendRequest(string $method, array|object|null $params = null) : Response{
+        $request = $this->createRequest($method, $params, false);
+
+        return $this->send($request);
+    }
+
+    public function sendNotification(string $method, array|object|null $params = null) : void{
+        $request = $this->createRequest($method, $params, true);
+
+        $this->send($request);
+    }
+
     private function connect() : void{
         if ($this->connection?->isConnected()){
             return;
@@ -87,18 +99,6 @@ class Client implements LoggerAwareInterface {
         } while (!$connection);
 
         $this->connection = $connection;
-    }
-
-    public function sendRequest(string $method, array|object|null $params = null) : Response{
-        $request = $this->createRequest($method, $params, false);
-
-        return $this->send($request);
-    }
-
-    public function sendNotification(string $method, array|object|null $params = null) : void{
-        $request = $this->createRequest($method, $params, true);
-
-        $this->send($request);
     }
 
     private function send(Request $request) : ?Response{
