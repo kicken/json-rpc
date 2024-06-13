@@ -17,7 +17,6 @@ use stdClass;
 class JSONReader {
     private bool $bufferCanGrow = true;
     private string $buffer = '';
-    private int $bufferOffset = 0;
 
     public function feed(string $data, bool $expectMore = true) : void{
         $this->buffer .= $data;
@@ -29,10 +28,9 @@ class JSONReader {
     }
 
     public function readObjects() : Generator{
-        while ($this->findStartOfDocument()){
-            $startOffset = $this->bufferOffset;
-            if ($this->findEndOfDocument()){
-                $endOffset = $this->bufferOffset + 1;
+        while (null !== $startOffset = $this->findStartOfDocument()){
+            if (null !== $endOffset = $this->findEndOfDocument($startOffset)){
+                $endOffset++;
                 $document = substr($this->buffer, $startOffset, $endOffset - $startOffset);
                 $this->buffer = substr($this->buffer, $endOffset);
 
@@ -55,58 +53,79 @@ class JSONReader {
         }
     }
 
-    private function findStartOfDocument() : bool{
-        $this->bufferOffset = 0;
-        for (; isset($this->buffer[$this->bufferOffset]); $this->bufferOffset++){
-            $ch = $this->buffer[$this->bufferOffset];
-            if (in_array($ch, ['[', '{'])){
-                return true;
-            } else if (!ctype_space($ch)){
+    private function findStartOfDocument() : ?int{
+        $startOfDocument = $this->findFirstCharacter(['[', '{']);
+        if ($startOfDocument === null){
+            if (ltrim($this->buffer) !== ''){
                 throw new MalformedJsonException(JSON_ERROR_SYNTAX);
             }
         }
 
-        return false;
+        return $startOfDocument;
     }
 
-    private function findEndOfDocument() : bool{
-        $openingChar = $this->buffer[$this->bufferOffset];
+    private function findEndOfDocument(int $startOffset) : ?int{
+        $openingChar = $this->buffer[$startOffset];
         $closingChar = match ($openingChar) {
             '{' => '}',
             '[' => ']',
             default => throw new LogicException('Invalid opening document character ' . $openingChar)
         };
-
         $inQuote = false;
-        $previousCh = null;
         $braceCounter = $bracketCounter = 0;
+        $startOffset++;
 
-        for (; isset($this->buffer[$this->bufferOffset]); $this->bufferOffset++){
-            $ch = $this->buffer[$this->bufferOffset];
-            if ($ch === '\\' && $previousCh !== '\\'){
-                $previousCh = null;
-                continue;
-            } else if ($ch == '"' && $previousCh !== '\\'){
+        do {
+            $charOffset = $this->findFirstCharacter(['"', '[', '{', '}', ']'], $startOffset);
+            $char = $this->buffer[$charOffset] ?? null;
+            if (!$inQuote && $char === $closingChar && $braceCounter === 0 && $bracketCounter === 0){
+                return $charOffset;
+            }
+
+            if ($char === '"' && !$this->isEscaped($charOffset)){
                 $inQuote = !$inQuote;
             } else if (!$inQuote){
-                if ($ch === '{'){
+                if ($char === '{'){
                     $braceCounter++;
-                } else if ($ch === '}'){
+                } else if ($char === '}'){
                     $braceCounter--;
-                } else if ($ch === '['){
+                } else if ($char === '['){
                     $bracketCounter++;
-                } else if ($ch === ']'){
+                } else if ($char === ']'){
                     $bracketCounter--;
-                }
-
-                if ($ch === $closingChar && $braceCounter === 0 && $bracketCounter === 0){
-                    return true;
                 }
             }
 
-            $previousCh = $ch;
+            $startOffset = $charOffset + 1;
+        } while ($charOffset !== null);
+
+        return null;
+    }
+
+    private function findFirstCharacter(array $charList, int $baseOffset = 0) : ?int{
+        $positions = array_map(function(string $char) use ($baseOffset) : ?int{
+            $pos = strpos($this->buffer, $char, $baseOffset);
+
+            return $pos === false ? null : $pos;
+        }, $charList);
+
+        $positions = array_filter($positions, fn(?int $position) => $position !== null);
+
+        return count($positions) ? min($positions) : null;
+    }
+
+    private function isEscaped(int $charOffset) : bool{
+        $slashCount = 0;
+        $previousCharOffset = $charOffset - 1;
+        while (($this->buffer[$previousCharOffset] ?? '') === '\\'){
+            $slashCount++;
+            $previousCharOffset--;
         }
 
-        return false;
+        if ($slashCount & 1){
+            return true;
+        } else {
+            return false;
+        }
     }
 }
