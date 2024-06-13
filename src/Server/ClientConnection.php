@@ -38,10 +38,12 @@ class ClientConnection {
 
 
     public function disconnect() : void{
-        EventLoop::cancel($this->readableCallbackId);
-        EventLoop::cancel($this->writableCallbackId);
-        fclose($this->stream);
-        $this->stream = null;
+        if (!$this->isDisconnected()){
+            EventLoop::cancel($this->readableCallbackId);
+            EventLoop::cancel($this->writableCallbackId);
+            fclose($this->stream);
+            $this->stream = null;
+        }
     }
 
     /**
@@ -50,6 +52,7 @@ class ClientConnection {
     public function readMessages() : Generator{
         while ($this->stream){
             try {
+                $this->logger->info(sprintf('[%s] Reading messages', $this->clientIp));
                 foreach ($this->reader->readObjects() as $object){
                     if (is_array($object)){
                         yield $this->convertBatchToRequests($object);
@@ -61,6 +64,7 @@ class ClientConnection {
                 $this->writeResponse(ErrorResponse::createFromException($ex));
                 $this->reader->reset();
             } finally {
+                $this->logger->info(sprintf('[%s] Completed reading messages', $this->clientIp));
                 $this->suspension->suspend();
             }
         }

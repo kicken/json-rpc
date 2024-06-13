@@ -28,6 +28,7 @@ class ClientConnection {
     ){
         $this->logger = $logger ?? new NullLogger();
         $this->reader = new JSONReader();
+        stream_set_blocking($this->stream, false);
         stream_set_read_buffer($this->stream, 0);
         stream_set_write_buffer($this->stream, 0);
     }
@@ -57,7 +58,6 @@ class ClientConnection {
         }
     }
 
-
     private function writeRequest(string $buffer) : void{
         $suspension = EventLoop::getSuspension();
         $callbackId = EventLoop::onWritable($this->stream, function($callbackId, $stream) use (&$buffer, $suspension){
@@ -74,38 +74,55 @@ class ClientConnection {
                 $buffer = substr($buffer, $written);
                 $this->logger->debug('Partially flushed write buffer', [
                     'bytesFlushed' => $written,
-                    'remainingBuffer' => $buffer
+                    'remainingBuffer' => strlen($buffer)
                 ]);
             }
             $suspension->resume();
         });
 
-        while ($buffer !== ''){
-            $suspension->suspend();
+        try {
+            while ($buffer !== ''){
+                $suspension->suspend();
+            }
+        } finally {
+            EventLoop::cancel($callbackId);
         }
-        EventLoop::cancel($callbackId);
     }
 
     private function readResponse(Request $request) : Response{
         $suspension = EventLoop::getSuspension();
         $id = $request->getId();
         $callbackId = EventLoop::onReadable($this->stream, function($callbackId, $stream) use ($suspension){
-            $data = fread($stream, self::CHUNK_SIZE);
-            if (!is_string($data) || $data === ''){
-                $suspension->throw(new RuntimeException('Client disconnected'));
+            try {
+                $totalRead = 0;
+                do {
+                    $data = fread($stream, self::CHUNK_SIZE) ?: '';
+                    if ($data !== ''){
+                        $totalRead += $length = strlen($data);
+                        $this->reader->feed($data);
+                        $this->logger->debug('Buffered incoming data bytes', [
+                            'count' => $length
+                        ]);
+                    }
+                } while ($data !== '');
 
-                return;
+                if ($totalRead === 0){
+                    $this->logger->notice('Read error, disconnecting.');
+                    $this->disconnect();
+                }
+            } finally {
+                $suspension->resume();
             }
-
-            $this->reader->feed($data);
-            $suspension->resume();
         });
 
-        while (!isset($this->responseMap[$id])){
-            $suspension->suspend();
-            $this->bufferResponses();
+        try {
+            while (!isset($this->responseMap[$id])){
+                $suspension->suspend();
+                $this->bufferResponses();
+            }
+        } finally {
+            EventLoop::cancel($callbackId);
         }
-        EventLoop::cancel($callbackId);
 
         return $this->responseMap[$id];
     }
@@ -134,5 +151,10 @@ class ClientConnection {
                 }
             }
         }
+    }
+
+    private function disconnect() : void{
+        fclose($this->stream);
+        $this->stream = null;
     }
 }
