@@ -10,6 +10,7 @@ namespace Kicken\JSONRPC\Client;
 
 
 use Amp\Future;
+use Kicken\JSONRPC\Exception\UnableToConnectException;
 use Kicken\JSONRPC\Request;
 use Kicken\JSONRPC\Response;
 use Psr\Log\LoggerAwareInterface;
@@ -17,7 +18,6 @@ use Psr\Log\LoggerAwareTrait;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use Revolt\EventLoop;
-use RuntimeException;
 use function Amp\async;
 
 class Client implements LoggerAwareInterface {
@@ -34,44 +34,54 @@ class Client implements LoggerAwareInterface {
         $this->logger = $logger ?? new NullLogger();
     }
 
+    private function connect() : ClientConnection{
+        $connection = null;
+        $suspension = EventLoop::getSuspension();
+        $attempt = 0;
+        $url = sprintf('tcp://%s:%d', $this->ip, $this->port);
+        do {
+            $attempt++;
+            try {
+                $stream = stream_socket_client($url, $errorCode, $errorString, null, STREAM_CLIENT_ASYNC_CONNECT);
+                if (!$stream){
+                    throw new UnableToConnectException($url, $errorCode, $errorString);
+                }
 
-    private function connect() : Future{
-        return async(function(){
-            $url = sprintf('tcp://%s:%d', $this->ip, $this->port);
-            $stream = stream_socket_client($url, $errorCode, $errorString, null, STREAM_CLIENT_ASYNC_CONNECT);
-            if (!$stream){
-                $this->logger->error('Failed to connect to server', [
+                $writableCallbackId = EventLoop::onWritable($stream, function() use ($suspension){
+                    $suspension->resume(true);
+                });
+                $timeoutCallbackId = EventLoop::delay($this->timeout, function() use ($suspension, $url){
+                    $suspension->throw(new UnableToConnectException($url, 0, 'Time out while trying to connect'));
+                });
+
+                try {
+                    $suspension->suspend();
+                    $remote = stream_socket_get_name($stream, true);
+                    if ($remote){
+                        $this->logger->debug('Successfully connected', [
+                            'stream' => get_resource_id($stream)
+                        ]);
+                        $connection = new ClientConnection($stream, $this->logger);
+                    }
+                } finally {
+                    EventLoop::cancel($writableCallbackId);
+                    EventLoop::cancel($timeoutCallbackId);
+                }
+            } catch (UnableToConnectException $ex){
+                if ($attempt === 5){
+                    throw $ex;
+                }
+
+                $this->logger->warning('Failed to connect to server, retrying', [
+                    'attempt' => $attempt,
                     'url' => $url,
                     'errorCode' => $errorCode,
-                    'errorMessage' => $errorString,
+                    'errorMessage' => $errorString
                 ]);
-                throw new RuntimeException('Could not connect to server');
             }
+        } while (!$connection);
 
-            $suspension = EventLoop::getSuspension();
-            $writableCallbackId = EventLoop::onWritable($stream, function() use ($suspension){
-                $suspension->resume();
-            });
-            $timeoutCallbackId = EventLoop::delay($this->timeout, function() use ($suspension, $url){
-                $this->logger->error('Timeout while attempting to connect to server', [
-                    'url' => $url
-                ]);
-                $suspension->throw(new RuntimeException('Unable to connect to server, timeout reached.'));
-            });
-            $suspension->suspend();
-            EventLoop::cancel($writableCallbackId);
-            EventLoop::cancel($timeoutCallbackId);
-
-            $remote = stream_socket_get_name($stream, true);
-            if (!$remote){
-                $this->logger->error('Unable to connect to socket.', [
-                    'url' => $url,
-                ]);
-                throw new RuntimeException('Could not connect to server');
-            }
-
-            return new ClientConnection($stream, $this->logger);
-        });
+        return $connection;
     }
 
     public function sendRequest(string $method, array|object|null $params = null) : Future{
@@ -86,8 +96,7 @@ class Client implements LoggerAwareInterface {
     }
 
     private function send(Request $request) : ?Response{
-        /** @var ClientConnection $client */
-        $client = $this->connect()->await();
+        $client = $this->connect();
 
         return $client->processRequest($request);
     }

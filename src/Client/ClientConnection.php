@@ -81,8 +81,12 @@ class ClientConnection {
         });
 
         try {
-            while ($buffer !== ''){
+            while ($buffer !== '' && $this->isConnected()){
                 $suspension->suspend();
+            }
+
+            if ($buffer !== ''){
+                throw new \RuntimeException('Unable to flush buffer.');
             }
         } finally {
             EventLoop::cancel($callbackId);
@@ -116,15 +120,19 @@ class ClientConnection {
         });
 
         try {
-            while (!isset($this->responseMap[$id])){
+            while (!isset($this->responseMap[$id]) && $this->isConnected()){
                 $suspension->suspend();
                 $this->bufferResponses();
             }
+
+            if (!isset($this->responseMap[$id])){
+                throw new RuntimeException('No response received.');
+            }
+
+            return $this->responseMap[$id];
         } finally {
             EventLoop::cancel($callbackId);
         }
-
-        return $this->responseMap[$id];
     }
 
     private function bufferResponses() : void{
@@ -154,7 +162,16 @@ class ClientConnection {
     }
 
     private function disconnect() : void{
-        fclose($this->stream);
-        $this->stream = null;
+        if ($this->stream){
+            $this->logger->debug('Disconnecting stream', [
+                'stream' => get_resource_id($this->stream)
+            ]);
+            fclose($this->stream);
+            $this->stream = null;
+        }
+    }
+
+    private function isConnected() : bool{
+        return $this->stream !== null;
     }
 }
