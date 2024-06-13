@@ -58,6 +58,10 @@ class ClientConnection {
         }
     }
 
+    public function isConnected() : bool{
+        return $this->stream !== null;
+    }
+
     private function writeRequest(string $buffer) : void{
         $suspension = EventLoop::getSuspension();
         $callbackId = EventLoop::onWritable($this->stream, function($callbackId, $stream) use (&$buffer, $suspension){
@@ -169,9 +173,5 @@ class ClientConnection {
             fclose($this->stream);
             $this->stream = null;
         }
-    }
-
-    private function isConnected() : bool{
-        return $this->stream !== null;
     }
 }

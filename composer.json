@@ -11,7 +11,10 @@
   "autoload": {
     "psr-4": {
       "Kicken\\JSONRPC\\": "src/"
-    }
+    },
+    "files": [
+      "src/constants.php"
+    ]
   },
   "autoload-dev": {
     "psr-4": {
