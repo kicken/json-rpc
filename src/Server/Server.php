@@ -138,9 +138,9 @@ class Server implements LoggerAwareInterface {
 
         foreach ($client->readMessages() as $message){
             if (is_array($message)){
-                $response = $this->processBatch($message);
+                $response = $this->processBatch($message, $client->getSession());
             } else {
-                $response = $this->processSingle($message);
+                $response = $this->processSingle($message, $client->getSession());
             }
 
             if ($response){
@@ -169,10 +169,10 @@ class Server implements LoggerAwareInterface {
      *
      * @return array<Response>
      */
-    private function processBatch(array $document) : array{
+    private function processBatch(array $document, ClientSession $session) : array{
         $responseList = [];
         foreach ($document as $data){
-            $result = $this->processSingle($data);
+            $result = $this->processSingle($data, $session);
             if ($result){
                 $responseList[] = $result;
             }
@@ -181,13 +181,13 @@ class Server implements LoggerAwareInterface {
         return $responseList;
     }
 
-    private function processSingle(Request|Response $request) : Response|null{
+    private function processSingle(Request|Response $request, ClientSession $session) : Response|null{
         if ($request instanceof Response){
             return $request;
         }
 
         try {
-            $result = $this->methodRegistry->execute($request);
+            $result = $this->methodRegistry->execute($request, $session);
 
             $response = null;
             if (!$request->isNotification()){

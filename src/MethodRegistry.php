@@ -4,6 +4,7 @@ namespace Kicken\JSONRPC;
 
 use Kicken\JSONRPC\Exception\MethodAlreadyRegisteredException;
 use Kicken\JSONRPC\Exception\MethodNotFoundException;
+use Kicken\JSONRPC\Server\ClientSession;
 use TypeError;
 
 class MethodRegistry {
@@ -38,7 +39,7 @@ class MethodRegistry {
         unset($this->methodList[$methodName]);
     }
 
-    public function execute(Request $request) : mixed{
+    public function execute(Request $request, ClientSession $session) : mixed{
         $method = $request->getMethod();
         /** @var RPCMethod $handler */
         $handler = $this->methodList[$method] ?? null;
@@ -46,6 +47,6 @@ class MethodRegistry {
             throw new MethodNotFoundException($method);
         }
 
-        return $handler->run($request);
+        return $handler->run($request, $session);
     }
 }

@@ -23,6 +23,7 @@ class ClientConnection {
     private string $writeBuffer = '';
     private EventLoop\Suspension $suspension;
     private JSONReader $reader;
+    private ClientSession $session;
 
     public function __construct(private $stream, private readonly LoggerInterface $logger){
         $this->suspension = EventLoop::getSuspension();
@@ -30,12 +31,16 @@ class ClientConnection {
         $this->readableCallbackId = EventLoop::onReadable($this->stream, $this->streamReadable(...));
         $this->writableCallbackId = EventLoop::onWritable($this->stream, $this->streamWritable(...));
         $this->reader = new JSONReader();
+        $this->session = new ClientSession($this->clientIp);
         EventLoop::disable($this->writableCallbackId);
 
         stream_set_read_buffer($this->stream, 0);
         stream_set_write_buffer($this->stream, 0);
     }
 
+    public function getSession() : ClientSession{
+        return $this->session;
+    }
 
     public function disconnect() : void{
         if (!$this->isDisconnected()){
