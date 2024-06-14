@@ -14,13 +14,13 @@ use Kicken\JSONRPC\Exception\InvalidJsonException;
 use Kicken\JSONRPC\Exception\JSONRPCException;
 
 class ErrorResponse implements Response {
-    private const GENERIC_ERROR_CODE = -32603;
+    public const GENERIC_ERROR_CODE = -32603;
 
     public function __construct(
         public readonly int $code,
         public readonly string $message,
-        public mixed $data,
-        public readonly ?string $id,
+        public mixed $data = null,
+        public readonly ?string $id = null,
     ){
     }
 

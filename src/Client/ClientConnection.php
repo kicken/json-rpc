@@ -115,8 +115,10 @@ class ClientConnection {
                     }
                 } while ($data !== '');
 
-                if ($totalRead === 0){
-                    $this->logger->notice('Read error, disconnecting.');
+                if ($totalRead === 0 && feof($stream)){
+                    $this->logger->notice('Connection lost.', [
+                        'remoteIp' => stream_socket_get_name($stream, true),
+                    ]);
                     $this->disconnect();
                 }
             } finally {

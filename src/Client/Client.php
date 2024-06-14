@@ -27,6 +27,7 @@ class Client implements LoggerAwareInterface {
     public function __construct(
         private readonly string $ip,
         private readonly int $port = 6850,
+        private readonly bool $useTLS = false,
         private readonly int $timeout = 10,
         ?LoggerInterface $logger = null
     ){
@@ -74,6 +75,11 @@ class Client implements LoggerAwareInterface {
                     $remote = stream_socket_get_name($stream, true);
                     if (!$remote){
                         throw new UnableToConnectException($url, ETIMEDOUT, 'Time out while trying to connect.');
+                    }
+                    if ($this->useTLS){
+                        if (!stream_socket_enable_crypto($stream, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)){
+                            throw new UnableToConnectException($url, ECRYPTOFAILED, 'Unable to enable crypto');
+                        }
                     }
 
                     $this->logger->debug('Successfully connected', [

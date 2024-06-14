@@ -117,7 +117,7 @@ class Server implements LoggerAwareInterface {
                     $this->logger->warning('Could not enable crypto for client.', [
                         'client' => $clientIp
                     ]);
-                    fwrite($clientStream, 'Connection requires TLS');
+                    fwrite($clientStream, json_encode(new ErrorResponse(ErrorResponse::GENERIC_ERROR_CODE, 'Connection requires TLS')));
                     fclose($clientStream);
 
                     return;
