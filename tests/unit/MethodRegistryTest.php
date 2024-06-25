@@ -6,6 +6,7 @@ use Kicken\JSONRPC\MethodRegistry;
 use Kicken\JSONRPC\Request;
 use Kicken\JSONRPC\Response;
 use Kicken\JSONRPC\RPCMethod;
+use Kicken\JSONRPC\Server\ClientSession;
 use Kicken\JSONRPC\SuccessfulResponse;
 use PHPUnit\Framework\TestCase;
 use TypeError;
@@ -19,7 +20,7 @@ class MethodRegistryTest extends TestCase {
                 return 'test_method';
             }
 
-            public function run(Request $request) : Response{
+            public function run(Request $request, ClientSession $session) : Response{
                 return new SuccessfulResponse($request->getId());
             }
         };
