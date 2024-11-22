@@ -25,13 +25,17 @@ class Client implements LoggerAwareInterface {
     private ?ClientConnection $connection = null;
 
     public function __construct(
-        private readonly string $ip,
-        private readonly int $port = 6850,
-        private readonly bool $useTLS = false,
+        private readonly string $serverUrl,
         private readonly int $timeout = 10,
         ?LoggerInterface $logger = null
     ){
         $this->logger = $logger ?? new NullLogger();
+        $parameters = parse_url($this->serverUrl);
+        if (!isset($parameters['scheme'], $parameters['host'])){
+            throw new \InvalidArgumentException('Server URL must have scheme and host');
+        } else if (!in_array(strtolower($parameters['scheme']), ['rpc', 'rpcs'])){
+            throw new \InvalidArgumentException('Server URL must be rpc:// or rpcs://');
+        }
     }
 
     public function sendRequest(string $method, array|object|null $params = null) : Response{
@@ -54,7 +58,9 @@ class Client implements LoggerAwareInterface {
         $connection = null;
         $suspension = EventLoop::getSuspension();
         $attempt = 0;
-        $url = sprintf('tcp://%s:%d', $this->ip, $this->port);
+        $serverParameters = parse_url($this->serverUrl);
+        $useTLS = strtolower($serverParameters['scheme'] ?? '') === 'rpcs';
+        $url = sprintf('tcp://%s:%d', $serverParameters['host'], $serverParameters['port'] ?? '6850');
         do {
             $attempt++;
             try {
@@ -76,7 +82,7 @@ class Client implements LoggerAwareInterface {
                     if (!$remote){
                         throw new UnableToConnectException($url, ETIMEDOUT, 'Time out while trying to connect.');
                     }
-                    if ($this->useTLS){
+                    if ($useTLS){
                         if (!stream_socket_enable_crypto($stream, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)){
                             throw new UnableToConnectException($url, ECRYPTOFAILED, 'Unable to enable crypto');
                         }
@@ -85,7 +91,7 @@ class Client implements LoggerAwareInterface {
                     $this->logger->debug('Successfully connected', [
                         'stream' => get_resource_id($stream)
                     ]);
-                    $connection = new ClientConnection($stream, $this->logger);
+                    $connection = new ClientConnection($stream, $this->timeout, $this->logger);
                 } finally {
                     EventLoop::cancel($writableCallbackId);
                     EventLoop::cancel($timeoutCallbackId);

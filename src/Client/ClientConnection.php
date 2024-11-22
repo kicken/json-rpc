@@ -24,6 +24,7 @@ class ClientConnection {
 
     public function __construct(
         private $stream,
+        private $timeout,
         ?LoggerInterface $logger = null
     ){
         $this->logger = $logger ?? new NullLogger();
@@ -60,50 +61,59 @@ class ClientConnection {
     }
 
     public function isConnected() : bool{
-        return $this->stream !== null;
+        return $this->stream !== null && !feof($this->stream);
     }
 
-    private function writeRequest(string $buffer) : void{
+    private function writeRequest(string $data) : void{
+        $buffer = fopen('php://memory', 'w+');
+        if (fwrite($buffer, $data) !== strlen($data)){
+            throw new \RuntimeException('Unable to prepare write buffer.');
+        }
+        rewind($buffer);
+        unset($data);
+
         $suspension = EventLoop::getSuspension();
-        $callbackId = EventLoop::onWritable($this->stream, function($callbackId, $stream) use (&$buffer, $suspension){
-            $length = strlen($buffer);
-            $written = fwrite($stream, $buffer, $length);
+        $callbackId = EventLoop::onWritable($this->stream, function($callbackId, $stream) use ($buffer, $suspension){
+            $data = fread($buffer, self::CHUNK_SIZE);
+            $dataSize = strlen($data);
+            $written = fwrite($stream, $data);
             if (!is_int($written)){
                 $this->logger->notice('Write error, disconnecting.');
+                $this->disconnect();
             }
 
-            if ($written === $length){
+            if ($written === $dataSize){
                 $this->logger->debug('Flushed write buffer.');
-                $buffer = '';
             } else if ($written > 0){
-                $buffer = substr($buffer, $written);
+                $unwritten = $dataSize - $written;
+                fseek($buffer, -$unwritten, SEEK_CUR);
                 $this->logger->debug('Partially flushed write buffer', [
-                    'bytesFlushed' => $written,
-                    'remainingBuffer' => strlen($buffer)
+                    'bytesFlushed' => $written
                 ]);
             }
             $suspension->resume();
         });
 
         try {
-            while ($buffer !== '' && $this->isConnected()){
+            while (!feof($buffer) && $this->isConnected()){
                 $suspension->suspend();
             }
 
-            if ($buffer !== ''){
+            if (!feof($buffer)){
                 throw new \RuntimeException('Unable to flush buffer.');
             }
         } finally {
             EventLoop::cancel($callbackId);
+            fclose($buffer);
         }
     }
 
     private function readResponse(Request $request) : Response{
         $suspension = EventLoop::getSuspension();
         $id = $request->getId();
-        $callbackId = EventLoop::onReadable($this->stream, function($callbackId, $stream) use ($suspension){
+        $totalRead = 0;
+        $callbackId = EventLoop::onReadable($this->stream, function($callbackId, $stream) use ($suspension, &$totalRead){
             try {
-                $totalRead = 0;
                 do {
                     $data = fread($stream, self::CHUNK_SIZE) ?: '';
                     if ($data !== ''){
@@ -114,22 +124,23 @@ class ClientConnection {
                         ]);
                     }
                 } while ($data !== '');
-
-                if ($totalRead === 0 && feof($stream)){
-                    $this->logger->notice('Connection lost.', [
-                        'remoteIp' => stream_socket_get_name($stream, true),
-                    ]);
-                    $this->disconnect();
-                }
             } finally {
                 $suspension->resume();
             }
         });
 
         try {
-            while (!isset($this->responseMap[$id]) && $this->isConnected()){
+            $timeout = time() + $this->timeout;
+            while (!isset($this->responseMap[$id]) && $this->isConnected() && time() < $timeout){
                 $suspension->suspend();
                 $this->bufferResponses();
+            }
+
+            if (!$this->isConnected()){
+                $this->logger->notice('Connection lost.', [
+                    'remoteIp' => stream_socket_get_name($this->stream, true),
+                ]);
+                $this->disconnect();
             }
 
             if (!isset($this->responseMap[$id])){
