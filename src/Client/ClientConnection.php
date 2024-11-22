@@ -24,7 +24,6 @@ class ClientConnection {
 
     public function __construct(
         private $stream,
-        private $timeout,
         ?LoggerInterface $logger = null
     ){
         $this->logger = $logger ?? new NullLogger();
@@ -130,8 +129,7 @@ class ClientConnection {
         });
 
         try {
-            $timeout = time() + $this->timeout;
-            while (!isset($this->responseMap[$id]) && $this->isConnected() && time() < $timeout){
+            while (!isset($this->responseMap[$id]) && $this->isConnected()){
                 $suspension->suspend();
                 $this->bufferResponses();
             }

@@ -91,7 +91,7 @@ class Client implements LoggerAwareInterface {
                     $this->logger->debug('Successfully connected', [
                         'stream' => get_resource_id($stream)
                     ]);
-                    $connection = new ClientConnection($stream, $this->timeout, $this->logger);
+                    $connection = new ClientConnection($stream, $this->logger);
                 } finally {
                     EventLoop::cancel($writableCallbackId);
                     EventLoop::cancel($timeoutCallbackId);
