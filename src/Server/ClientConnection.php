@@ -34,6 +34,7 @@ class ClientConnection {
         $this->session = new ClientSession($this->clientIp);
         EventLoop::disable($this->writableCallbackId);
 
+        stream_set_blocking($this->stream, false);
         stream_set_read_buffer($this->stream, 0);
         stream_set_write_buffer($this->stream, 0);
     }
@@ -44,6 +45,7 @@ class ClientConnection {
 
     public function disconnect() : void{
         if (!$this->isDisconnected()){
+            $this->reader->feed('', false);
             EventLoop::cancel($this->readableCallbackId);
             EventLoop::cancel($this->writableCallbackId);
             fclose($this->stream);
@@ -55,7 +57,7 @@ class ClientConnection {
      * @return Generator<Request|array>
      */
     public function readMessages() : Generator{
-        while ($this->stream){
+        while (!$this->isDisconnected()){
             try {
                 $this->logger->debug(sprintf('[%s] Reading messages', $this->clientIp));
                 foreach ($this->reader->readObjects() as $object){
@@ -101,11 +103,10 @@ class ClientConnection {
                 return;
             }
 
-            $totalRead = 0;
             do {
                 $data = fread($this->stream, self::CHUNK_SIZE) ?: '';
                 if ($data !== ''){
-                    $totalRead += $length = strlen($data);
+                    $length = strlen($data);
                     $this->reader->feed($data);
                     $this->logger->debug(sprintf('[%s] Buffered incoming data bytes', $this->clientIp), [
                         'count' => $length
@@ -113,13 +114,13 @@ class ClientConnection {
                 }
             } while ($data !== '');
 
-            if ($totalRead === 0 && feof($this->stream)){
-                $this->logger->notice('Connection lost.', [
+            if (feof($this->stream)){
+                $this->logger->notice(sprintf('[%s] Connection lost.', $this->clientIp), [
                     'remoteIp' => stream_socket_get_name($this->stream, true),
                 ]);
                 $this->disconnect();
-
-                return;
+            } else {
+                $this->logger->debug(sprintf('[%s] Stream meta data.', $this->clientIp), stream_get_meta_data($this->stream));
             }
         } finally {
             $this->suspension->resume();

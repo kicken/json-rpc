@@ -123,7 +123,6 @@ class Server implements LoggerAwareInterface {
                     return;
                 }
 
-                stream_set_blocking($clientStream, false);
                 $this->logger->info('Successfully established client connection.', [
                     'client' => $clientIp
                 ]);
@@ -144,6 +143,9 @@ class Server implements LoggerAwareInterface {
             }
 
             if ($response){
+                $this->logger->debug(sprintf('[%s] Sending response', $client->getSession()->endpoint), [
+                    'id' => $response->getId()
+                ]);
                 $client->writeResponse($response);
             }
         }
@@ -187,6 +189,10 @@ class Server implements LoggerAwareInterface {
         }
 
         try {
+            $this->logger->debug(sprintf('[%s] Processing request', $session->endpoint), [
+                'id' => $request->getId(),
+                'method' => $request->getMethod()
+            ]);
             $result = $this->methodRegistry->execute($request, $session);
 
             $response = null;

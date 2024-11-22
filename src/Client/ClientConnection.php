@@ -65,7 +65,7 @@ class ClientConnection {
 
     private function writeRequest(string $data) : void{
         $buffer = fopen('php://memory', 'w+');
-        if (fwrite($buffer, $data) !== strlen($data)){
+        if (!$buffer || fwrite($buffer, $data) !== strlen($data)){
             throw new \RuntimeException('Unable to prepare write buffer.');
         }
         rewind($buffer);
@@ -95,6 +95,7 @@ class ClientConnection {
 
         try {
             while (!feof($buffer) && $this->isConnected()){
+                $this->logger->debug('Waiting for new socket writable event.');
                 $suspension->suspend();
             }
 
@@ -179,6 +180,7 @@ class ClientConnection {
 
     private function disconnect() : void{
         if ($this->stream){
+            $this->reader->feed('', false);
             $this->logger->debug('Disconnecting stream', [
                 'stream' => get_resource_id($this->stream)
             ]);
